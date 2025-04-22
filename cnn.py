@@ -10,7 +10,7 @@ import numpy as np
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 
-def train_and_evaluate_cnn(base_folder='./base', epochs=100, save_model=True):
+def train_and_evaluate_cnn(base_folder='./base', epochs=30, save_model=True):
     training_folder = os.path.join(base_folder, 'training_set')
     test_folder = os.path.join(base_folder, 'test_set')
     

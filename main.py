@@ -14,7 +14,7 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 @app.post("/upload-images")
-async def upload_images(request: Request, epochs: int = 100):
+async def upload_images(request: Request, epochs: int = 30):
     parent_folder = "base"
     
     if os.path.exists(parent_folder):
