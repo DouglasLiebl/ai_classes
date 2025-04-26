@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form
 import os
 from datetime import datetime
 from fastapi import Request
 import unicodedata
 import shutil
-from cnn import train_and_evaluate_cnn
+from service.cnn import train_and_evaluate_cnn, classify_new_image, list_trained_models
+import tempfile
+import traceback
 
 app = FastAPI()
 
@@ -13,8 +15,14 @@ def sanitize_filename(filename: str) -> str:
     filename = filename.replace(' ', '_')
     return filename
 
-@app.post("/upload-images")
-async def upload_images(request: Request, epochs: int = 30):
+@app.post("/cnn/train")
+async def upload_images(
+    request: Request, 
+    epochs: int = 30, 
+    model_name: str = "",
+    layers: int = 6,
+    neurons_by_layer: int = 6,
+):
     parent_folder = "base"
     
     if os.path.exists(parent_folder):
@@ -30,10 +38,8 @@ async def upload_images(request: Request, epochs: int = 30):
     try:
         form_data = await request.form()
         saved_files = {"training_set": {}, "test_set": {}}
-        print(form_data.multi_items())
 
         for field_name, file in form_data.multi_items():
-            print(f"Processing file: {file.filename} from field: {field_name}")
             
             if field_name.startswith("training_"):
                 class_name = field_name[len("training_"):]
@@ -58,17 +64,14 @@ async def upload_images(request: Request, epochs: int = 30):
                 if hasattr(file, 'filename'):
                     safe_filename = sanitize_filename(file.filename)
                     file_path = os.path.join(class_folder, safe_filename)
-                    print(f"Saving to: {file_path}")
                     
                     if hasattr(file, 'read') and callable(file.read):
                         contents = await file.read()
-                        print(f"Read {len(contents)} bytes")
                         
                         with open(file_path, "wb") as f:
                             f.write(contents)
                         
                         file_size = os.path.getsize(file_path)
-                        print(f"Saved file with size: {file_size}")
                         
                         if set_type in ["training_set", "test_set"]:
                             saved_files[set_type][class_name].append({
@@ -77,34 +80,70 @@ async def upload_images(request: Request, epochs: int = 30):
                                 "path": file_path,
                                 "size": file_size
                             })
-                    else:
-                        print(f"File object doesn't have a read method")
-                else:
-                    print(f"Object is not a file or doesn't have filename attribute")
                 
             except Exception as e:
                 print(f"Error saving file: {str(e)}")
                 print(f"Error type: {type(e).__name__}")
                 return {"error": f"Failed to save file: {str(e)}"}
         
-        print("Starting model training...")
-        training_results = train_and_evaluate_cnn(base_folder='./base', epochs=epochs)
-        print(f"Model training completed with accuracy: {training_results['accuracy']}")
+        training_results = train_and_evaluate_cnn(
+            base_folder='./base', 
+            epochs=epochs, 
+            model_name=model_name, 
+            layers=layers, 
+            neurons_by_layer=neurons_by_layer
+        )
         
         try:
             shutil.rmtree(parent_folder)
-            print(f"Base folder {parent_folder} deleted successfully")
         except Exception as e:
             print(f"Error deleting folder: {str(e)}")
         
         return {
             "message": "Files uploaded and model trained successfully",
             "training_results": training_results,
-            "folders_structure": {
-                "training_set": list(saved_files["training_set"].keys()),
-                "test_set": list(saved_files["test_set"].keys())
+        }
+    
+    except Exception as e:
+        return {"error": f"Request failed: {str(e)}"}
+    
+@app.post("/cnn/classify-image/")
+async def classify_image(
+    image: UploadFile = File(...),
+    model_name: str = Form(...)
+):
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_image:
+            contents = await image.read()
+            temp_image.write(contents)
+            temp_image_path = temp_image.name
+        
+        try:
+            result = classify_new_image(model_name, temp_image_path)
+            return {
+                "model_name": model_name,
+                "classification_result": result
             }
+            
+        finally:
+            if os.path.exists(temp_image_path):
+                os.unlink(temp_image_path)
+                
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Classification error: {str(e)}\n{error_details}")
+        return {"error": f"Classification failed: {str(e)}"}
+
+@app.get("/cnn/list-models/")
+async def list_models():
+    try:
+        models = list_trained_models()
+        return {
+            "models_count": len(models),
+            "models": models
         }
     except Exception as e:
-        print(f"Global error: {str(e)}")
-        return {"error": f"Request failed: {str(e)}"}
+        error_details = traceback.format_exc()
+        print(f"Error listing models: {str(e)}\n{error_details}")
+        return {"error": f"Failed to list models: {str(e)}"}
