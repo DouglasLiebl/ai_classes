@@ -53,15 +53,22 @@ class BatchUploadManager:
         with open(metadata_path, "r") as f:
             return json.load(f)
 
-    @staticmethod
-    def update_metadata(session_id: str, updates: Dict) -> Dict:
-        metadata = BatchUploadManager.get_metadata(session_id)
+    @classmethod
+    def update_metadata(cls, session_id, updates):
+        session_path = cls.get_session_path(session_id)
+        metadata_path = os.path.join(session_path, "metadata.json")
+        
+        if not os.path.exists(metadata_path):
+            raise ValueError(f"Metadata not found for session {session_id}")
+        
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        
         metadata.update(updates)
-
-        metadata_path = os.path.join(TEMP_UPLOAD_DIR, session_id, "metadata.json")
+        
         with open(metadata_path, "w") as f:
-            json.dump(metadata, f)
-
+            json.dump(metadata, f, indent=4)
+        
         return metadata
 
     @staticmethod

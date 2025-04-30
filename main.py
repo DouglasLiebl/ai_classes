@@ -1,15 +1,15 @@
-from fastapi import FastAPI, UploadFile, File, Form, Body, Request
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
 from typing import List
 import os
 from datetime import datetime
 import shutil
-from service.cnn import train_and_evaluate_cnn, classify_new_image, list_trained_models
-from service.feature_extraction import extract_features, train_neural_network_from_csv
+from service.cnn import classify_new_image, list_trained_models
 from service.batch_upload_manager import BatchUploadManager
 import tempfile
 import traceback
 import random
 from entities.trainingParameters import TrainingParameters
+from service.background_tasks import background_model_training
 
 app = FastAPI()
 
@@ -85,7 +85,11 @@ async def list_upload_sessions():
 
 
 @app.post("/train-from-session/{session_id}")
-async def train_from_session(session_id: str, params: TrainingParameters):
+async def train_from_session(
+    background_tasks: BackgroundTasks,
+    session_id: str, 
+    params: TrainingParameters
+):
     try:
         try:
             metadata = BatchUploadManager.get_metadata(session_id)
@@ -95,7 +99,13 @@ async def train_from_session(session_id: str, params: TrainingParameters):
         if metadata["total_files"] == 0:
             return {"error": "No files found in this upload session"}
 
-        BatchUploadManager.update_metadata(session_id, {"status": "training"})
+        if (metadata["classes"] == "training_in_progress"):
+            return {"error": "This model already is training"}
+        
+        
+
+
+        BatchUploadManager.update_metadata(session_id, {"status": "preparing"})
 
         parent_folder = "base"
         if os.path.exists(parent_folder):
@@ -164,57 +174,15 @@ async def train_from_session(session_id: str, params: TrainingParameters):
                 "error": "No valid files were uploaded or split between training and test sets"
             }
 
-        if params.rgb_ranges is not None:
-            try:
-                features_csv = os.path.join(
-                    parent_folder, params.model_name + "_features.csv"
-                )
-                extract_features(
-                    main_folder=training_folder,
-                    output_csv=features_csv,
-                    class_name=params.model_name,
-                    properties=params.rgb_ranges,
-                )
-
-                training_results = {}
-
-                training_results = train_neural_network_from_csv(
-                    features_csv,
-                    epochs=params.epochs,
-                    model_name=params.model_name,
-                    layers=params.layers,
-                    neurons_by_layer=params.neurons_by_layer,
-                )
-
-                return {
-                    "message": "Files uploaded and model trained successfully",
-                    "training_results": training_results,
-                }
-
-            except Exception as e:
-                raise e
-                return {"error": f"Request failed: {str(e)}"}
-
-        training_results = train_and_evaluate_cnn(
-            base_folder="./base",
-            epochs=params.epochs,
-            model_name=params.model_name or f"model_{session_id[:8]}",
-            layers=params.layers,
-            neurons_by_layer=params.neurons_by_layer,
+        background_tasks.add_task( 
+            background_model_training,
+            session_id=session_id,
+            params=params
         )
-
-        BatchUploadManager.update_metadata(session_id, {"status": "completed"})
-
-        try:
-            shutil.rmtree(parent_folder)
-        except Exception as e:
-            print(f"Error deleting folder: {str(e)}")
-
-        BatchUploadManager.clean_session(session_id, preserve_metadata=False)
 
         return {
             "status": "success",
-            "message": "Model trained successfully",
+            "message": "Started model training.",
             "session_id": session_id,
             "training_parameters": {
                 "epochs": params.epochs,
@@ -237,8 +205,7 @@ async def train_from_session(session_id: str, params: TrainingParameters):
                     class_name: len(files)
                     for class_name, files in saved_files["test_set"].items()
                 },
-            },
-            "training_results": training_results,
+            }
         }
 
     except Exception as e:
@@ -251,6 +218,34 @@ async def train_from_session(session_id: str, params: TrainingParameters):
 
         return {"error": f"Training failed: {str(e)}"}
 
+@app.get("/training-status/{session_id}")
+async def get_training_status(session_id: str):
+    try:
+        metadata = BatchUploadManager.get_metadata(session_id)
+        
+        status = metadata.get("status", "unknown")
+        training_results = metadata.get("training_results", {})
+        
+        response = {
+            "session_id": session_id,
+            "status": status,
+        }
+        
+        if status == "completed":
+            response["training_results"] = training_results
+            response["completed_at"] = metadata.get("completed_at")
+        elif status == "error":
+            response["error"] = metadata.get("error")
+            response["failed_at"] = metadata.get("failed_at")
+            
+        return response
+        
+    except ValueError:
+        return {"error": f"Upload session {session_id} not found"}
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Error checking training status: {str(e)}\n{error_details}")
+        return {"error": f"Failed to check training status: {str(e)}"}
 
 @app.post("/classify-image/")
 async def classify_image(image: UploadFile = File(...), model_name: str = Form(...)):

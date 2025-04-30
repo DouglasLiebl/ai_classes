@@ -9,7 +9,7 @@ from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 from sklearn.metrics import accuracy_score
 from keras.models import load_model
-from keras.preprocessing import image
+from keras.utils import load_img, img_to_array
 import json
 from typing import List, Dict
 import glob
@@ -18,7 +18,6 @@ import glob
 def train_and_evaluate_cnn(
     base_folder="./base",
     epochs=30,
-    save_model=True,
     model_name=datetime.now().strftime("%Y%m%d_%H%M%S"),
     layers=6,
     neurons_by_layer=6,
@@ -85,18 +84,18 @@ def train_and_evaluate_cnn(
     predictions_classes = np.argmax(predictions, axis=1)
     acc = accuracy_score(predictions_classes, test_base.classes)
 
-    models_dir = os.path.join("models", "cnn")
+    models_dir = os.path.join("models")
     os.makedirs(models_dir, exist_ok=True)
 
-    if save_model:
-        model_path = os.path.join(models_dir, f"{model_name}.keras")
-        neural_network.save(model_path)
 
-        class_indices = training_base.class_indices
-        class_mapping = {str(v): k for k, v in class_indices.items()}
-        class_mapping_path = os.path.join(models_dir, f"{model_name}_classes.json")
-        with open(class_mapping_path, "w") as f:
-            json.dump(class_mapping, f)
+    model_path = os.path.join(models_dir, f"{model_name}.keras")
+    neural_network.save(model_path)
+
+    class_indices = training_base.class_indices
+    class_mapping = {str(v): k for k, v in class_indices.items()}
+    class_mapping_path = os.path.join(models_dir, f"{model_name}_classes.json")
+    with open(class_mapping_path, "w") as f:
+        json.dump(class_mapping, f)
 
     return {
         "model_name": model_name,
@@ -116,8 +115,8 @@ def classify_new_image(model_name, image_path):
 
         model = load_model(model_path)
 
-        img = image.load_img(image_path, target_size=(64, 64))
-        img_array = image.img_to_array(img)
+        img = load_img(image_path, target_size=(64, 64))
+        img_array = img_to_array(img)
         img_array = np.expand_dims(img_array, axis=0)
         img_array = img_array / 255.0
 
@@ -150,7 +149,7 @@ def classify_new_image(model_name, image_path):
 
 
 def list_trained_models() -> List[Dict]:
-    models_dir = os.path.join("models", "cnn")
+    models_dir = os.path.join("models")
     if not os.path.exists(models_dir):
         os.makedirs(models_dir, exist_ok=True)
         return []
