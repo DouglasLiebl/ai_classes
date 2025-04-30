@@ -10,9 +10,17 @@ import traceback
 import random
 from entities.trainingParameters import TrainingParameters
 from service.background_tasks import background_model_training
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/create-upload-session")
 async def create_upload_session():
