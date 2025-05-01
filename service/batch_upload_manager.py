@@ -175,3 +175,22 @@ class BatchUploadManager:
         except Exception as e:
             print(f"Error cleaning session {session_id}: {str(e)}")
             return False
+
+    @staticmethod
+    def upload_single_image(image_data: bytes, filename: str, class_name: str = "default") -> str:
+        session_id = BatchUploadManager.create_session()
+        
+        file_info = {
+            "filename": filename,
+            "content": image_data
+        }
+        
+        BatchUploadManager.add_files(session_id, class_name, [file_info])
+        
+        BatchUploadManager.update_metadata(session_id, {
+            "is_single_image": True,
+            "original_filename": filename,
+            "class_name": class_name
+        })
+        
+        return session_id

@@ -41,7 +41,6 @@ def train_neural_network_from_csv(
 
     X = dataset.iloc[:, 0:-1].values
     y = dataset.iloc[:, -1].values
-    # y = str(y).upper() == model_name.upper()
     
     unique_classes = len(np.unique(y))
     print(f"Number of unique classes: {unique_classes}")
@@ -60,7 +59,6 @@ def train_neural_network_from_csv(
         )
     )
     
-    # Add dropout for regularization
     model.add(tf.keras.layers.Dropout(0.2))
 
     for _ in range(layers - 1):
@@ -72,7 +70,6 @@ def train_neural_network_from_csv(
         ))
         model.add(tf.keras.layers.Dropout(0.2))
 
-    # Use appropriate output layer based on number of classes
     if unique_classes == 2:
         model.add(tf.keras.layers.Dense(units=1, activation="sigmoid"))
         loss_function = "binary_crossentropy"
@@ -83,13 +80,11 @@ def train_neural_network_from_csv(
     print(f"Using loss function: {loss_function}")
     model.compile(optimizer="adam", loss=loss_function, metrics=["accuracy"])
 
-    # Add early stopping
     early_stopping = tf.keras.callbacks.EarlyStopping(
         monitor='val_loss', patience=20, restore_best_weights=True
     )
 
-    # Make training more verbose
-    history = model.fit(
+    model.fit(
         X_train, y_train, 
         epochs=epochs, 
         validation_split=0.1, 
@@ -102,12 +97,11 @@ def train_neural_network_from_csv(
     acc = accuracy_score(y_test, predictions)
   
 
-    models_dir = os.path.join("models")
+    models_dir = os.path.join("models", "rgb")
     model_path = os.path.join(models_dir, f"{model_name}.keras")
     os.makedirs(models_dir, exist_ok=True)
     model.save(model_path)
     
-    # Save class mapping
     class_mapping = {index: label for index, label in enumerate(label_encoder.classes_)}
     class_mapping_path = os.path.join(models_dir, f"{model_name}_classes.json")
     with open(class_mapping_path, "w") as f:
@@ -191,6 +185,37 @@ def extract_features(main_folder, output_csv, class_name, properties):
 
     print(f"CSV successfully generated: {output_csv}")
 
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Extract pixel values from images.")
+
+    parser.add_argument(
+        "--class_intervals",
+        type=str,
+        default="class_intervals.json",
+        help="Path to the JSON file containing class intervals.",
+    )
+
+    parser.add_argument(
+        "--main_folder",
+        type=str,
+        default="images",
+        help="Main folder containing image classes.",
+    )
+
+    parser.add_argument(
+        "--output_csv",
+        type=str,
+        default="pixels.csv",
+        help="Output CSV file name.",
+    )
+
+    args = parser.parse_args()
+
+    main_folder = args.main_folder
+    output_csv = args.output_csv
+    with open(args.class_intervals, "r") as f:
+        class_intervals = json.load(f)
+
 def predict_image(model_path, image_path, class_intervals_path):
     """
     Faz predição para uma única imagem.
@@ -238,85 +263,9 @@ def predict_image(model_path, image_path, class_intervals_path):
         'probabilities': probabilities,
         'raw_prediction': prediction.tolist()
     }
-def extract_single_image_features(image_path, class_intervals, properties=None):
-    """
-    Extrai features de uma única imagem no mesmo formato usado para treinar o modelo.
-    
-    Args:
-        image_path (str): Caminho para a imagem a ser processada
-        class_intervals (dict): Dicionário com os intervalos de classe (como no JSON)
-        properties (list, optional): Lista de propriedades (como no treino). Se None, será criada.
-        
-    Returns:
-        numpy.array: Array com as features extraídas (no mesmo formato do CSV de treino)
-    """
-    # Se properties não for fornecido, recriamos a estrutura usada no treino
-    if properties is None:
-        class Property:
-            def __init__(self, name, rgb):
-                self.name = name
-                self.rgb = rgb
-        
-        properties = []
-        for class_name, intervals in class_intervals.items():
-            for interval_name, rgb_values in intervals.items():
-                properties.append(Property(
-                    name=f"{interval_name}_{class_name}",
-                    rgb=rgb_values
-                ))
-    
-    # Abre a imagem e converte para RGB
-    image = Image.open(image_path).convert('RGB')
-    pixels = image.load()
-    width, height = image.size
-    total_pixels = width * height
-    
-    # Inicializa contadores para cada feature
-    feature_counts = {f"{prop.name}": 0 for prop in properties}
-    
-    # Processa cada pixel da imagem
-    for x in range(width):
-        for y in range(height):
-            pixel = pixels[x, y]
-            for prop in properties:
-                interval = {"rgb": prop.rgb}
-                if is_pixel_in_interval(pixel, interval):
-                    feature_counts[prop.name] += 1
-    
-    # Calcula as proporções (igual ao processo de treino)
-    feature_proportions = [count / total_pixels for count in feature_counts.values()]
-    
-    return np.array(feature_proportions)
 
-if __name__ == "__main__":
-    parser = ArgumentParser(description="Extract pixel values from images.")
-
-    parser.add_argument(
-        "--class_intervals",
-        type=str,
-        default="class_intervals.json",
-        help="Path to the JSON file containing class intervals.",
-    )
-
-    parser.add_argument(
-        "--main_folder",
-        type=str,
-        default="images",
-        help="Main folder containing image classes.",
-    )
-
-    parser.add_argument(
-        "--output_csv",
-        type=str,
-        default="pixels.csv",
-        help="Output CSV file name.",
-    )
-
-    args = parser.parse_args()
-
-    main_folder = args.main_folder
-    output_csv = args.output_csv
-    with open(args.class_intervals, "r") as f:
-        class_intervals = json.load(f)
-
-    # extract_features(main_folder, output_csv, class_intervals)
+# Função auxiliar para extrair features de uma única imagem
+def extract_single_image_features(image_path, class_intervals):
+    # Implementação similar à extract_features mas para uma única imagem
+    # Retorna um array com as mesmas features usadas no treino
+    ...

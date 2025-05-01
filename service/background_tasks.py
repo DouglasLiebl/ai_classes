@@ -18,7 +18,7 @@ def background_model_training(
     try:
         BatchUploadManager.update_metadata(session_id, {"status": "training_in_progress"})
         
-        parent_folder = "base"
+        parent_folder = f"base/{params.model_name}"
         training_folder = os.path.join(parent_folder, "training_set")
 
         if params.rgb_ranges is not None:
@@ -41,7 +41,7 @@ def background_model_training(
             )
         else:
             training_results = train_and_evaluate_cnn(
-                base_folder="./base",
+                base_folder=None,
                 epochs=params.epochs,
                 model_name=params.model_name or f"model_{session_id[:8]}",
                 layers=params.layers,

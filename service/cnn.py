@@ -16,12 +16,16 @@ import glob
 
 
 def train_and_evaluate_cnn(
-    base_folder="./base",
+    base_folder=None,
     epochs=30,
     model_name=datetime.now().strftime("%Y%m%d_%H%M%S"),
     layers=6,
     neurons_by_layer=6,
 ):
+    if base_folder is None:
+        base_folder = f"base/{model_name}"
+    os.makedirs(base_folder, exist_ok=True)
+
     training_folder = os.path.join(base_folder, "training_set")
     test_folder = os.path.join(base_folder, "test_set")
 
@@ -84,7 +88,7 @@ def train_and_evaluate_cnn(
     predictions_classes = np.argmax(predictions, axis=1)
     acc = accuracy_score(predictions_classes, test_base.classes)
 
-    models_dir = os.path.join("models")
+    models_dir = os.path.join("models", "cnn")
     os.makedirs(models_dir, exist_ok=True)
 
 
@@ -94,6 +98,7 @@ def train_and_evaluate_cnn(
     class_indices = training_base.class_indices
     class_mapping = {str(v): k for k, v in class_indices.items()}
     class_mapping_path = os.path.join(models_dir, f"{model_name}_classes.json")
+    
     with open(class_mapping_path, "w") as f:
         json.dump(class_mapping, f)
 

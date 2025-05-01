@@ -8,7 +8,7 @@ from service.batch_upload_manager import BatchUploadManager
 import tempfile
 import traceback
 import random
-from entities.trainingParameters import TrainingParameters
+from entities.trainingParameters import TrainingParameters, ColorRange
 from service.background_tasks import background_model_training
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -111,11 +111,9 @@ async def train_from_session(
             return {"error": "This model already is training"}
         
         
-
-
         BatchUploadManager.update_metadata(session_id, {"status": "preparing"})
 
-        parent_folder = "base"
+        parent_folder = f"base/{params.model_name}"
         if os.path.exists(parent_folder):
             shutil.rmtree(parent_folder)
 
@@ -255,7 +253,7 @@ async def get_training_status(session_id: str):
         print(f"Error checking training status: {str(e)}\n{error_details}")
         return {"error": f"Failed to check training status: {str(e)}"}
 
-@app.post("/classify-image/")
+@app.post("/cnn/classify-image/")
 async def classify_image(image: UploadFile = File(...), model_name: str = Form(...)):
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_image:
@@ -288,3 +286,47 @@ async def list_models():
         error_details = traceback.format_exc()
         print(f"Error listing models: {str(e)}\n{error_details}")
         return {"error": f"Failed to list models: {str(e)}"}
+
+@app.post("/upload/single")
+async def upload_single_image(
+    file: UploadFile = File(...),
+    class_name: str = Form("default")
+):
+    try:
+        content = await file.read()
+        
+        session_id = BatchUploadManager.upload_single_image(
+            image_data=content,
+            filename=file.filename,
+            class_name=class_name
+        )
+        
+        return {
+                "success": True,
+                "message": "Image uploaded successfully",
+                "session_id": session_id,
+                "filename": file.filename,
+                "class": class_name
+            }
+        
+    except Exception as e:
+        return {
+           "detail": f"Error uploading image: {str(e)}"
+        }
+           
+@app.post("/rgb/classify-image/{session_id}")
+async def rgb_classify(
+    session_id: str
+): 
+    try:
+        metadata = BatchUploadManager.get_metadata(session_id)
+    except ValueError:
+        return {"error": f"Upload session {session_id} not found"}
+
+    if metadata["total_files"] == 0:
+        return {"error": "No files found in this upload session"}
+    
+    BatchUploadManager.update_metadata(session_id, {"status": "processing"})
+
+    # returns the desired image
+    return metadata["classes"]["default"]["files"][0]["saved_path"]
