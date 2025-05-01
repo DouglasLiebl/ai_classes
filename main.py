@@ -3,14 +3,17 @@ from typing import List
 import os
 from datetime import datetime
 import shutil
+from entities.rgbClassify import RgbClassify
 from service.cnn import classify_new_image, list_trained_models
 from service.batch_upload_manager import BatchUploadManager
 import tempfile
 import traceback
 import random
-from entities.trainingParameters import TrainingParameters, ColorRange
+from entities.trainingParameters import TrainingParameters
 from service.background_tasks import background_model_training
 from fastapi.middleware.cors import CORSMiddleware
+
+from service.feature_extraction import classify_feature_based_image
 
 app = FastAPI()
 
@@ -21,6 +24,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.post("/create-upload-session")
 async def create_upload_session():
@@ -94,9 +98,7 @@ async def list_upload_sessions():
 
 @app.post("/train-from-session/{session_id}")
 async def train_from_session(
-    background_tasks: BackgroundTasks,
-    session_id: str, 
-    params: TrainingParameters
+    background_tasks: BackgroundTasks, session_id: str, params: TrainingParameters
 ):
     try:
         try:
@@ -107,10 +109,9 @@ async def train_from_session(
         if metadata["total_files"] == 0:
             return {"error": "No files found in this upload session"}
 
-        if (metadata["classes"] == "training_in_progress"):
+        if metadata["classes"] == "training_in_progress":
             return {"error": "This model already is training"}
-        
-        
+
         BatchUploadManager.update_metadata(session_id, {"status": "preparing"})
 
         parent_folder = f"base/{params.model_name}"
@@ -180,10 +181,8 @@ async def train_from_session(
                 "error": "No valid files were uploaded or split between training and test sets"
             }
 
-        background_tasks.add_task( 
-            background_model_training,
-            session_id=session_id,
-            params=params
+        background_tasks.add_task(
+            background_model_training, session_id=session_id, params=params
         )
 
         return {
@@ -211,7 +210,7 @@ async def train_from_session(
                     class_name: len(files)
                     for class_name, files in saved_files["test_set"].items()
                 },
-            }
+            },
         }
 
     except Exception as e:
@@ -224,34 +223,36 @@ async def train_from_session(
 
         return {"error": f"Training failed: {str(e)}"}
 
+
 @app.get("/training-status/{session_id}")
 async def get_training_status(session_id: str):
     try:
         metadata = BatchUploadManager.get_metadata(session_id)
-        
+
         status = metadata.get("status", "unknown")
         training_results = metadata.get("training_results", {})
-        
+
         response = {
             "session_id": session_id,
             "status": status,
         }
-        
+
         if status == "completed":
             response["training_results"] = training_results
             response["completed_at"] = metadata.get("completed_at")
         elif status == "error":
             response["error"] = metadata.get("error")
             response["failed_at"] = metadata.get("failed_at")
-            
+
         return response
-        
+
     except ValueError:
         return {"error": f"Upload session {session_id} not found"}
     except Exception as e:
         error_details = traceback.format_exc()
         print(f"Error checking training status: {str(e)}\n{error_details}")
         return {"error": f"Failed to check training status: {str(e)}"}
+
 
 @app.post("/cnn/classify-image/")
 async def classify_image(image: UploadFile = File(...), model_name: str = Form(...)):
@@ -287,37 +288,32 @@ async def list_models():
         print(f"Error listing models: {str(e)}\n{error_details}")
         return {"error": f"Failed to list models: {str(e)}"}
 
+
 @app.post("/upload/single")
 async def upload_single_image(
-    file: UploadFile = File(...),
-    class_name: str = Form("default")
+    file: UploadFile = File(...), class_name: str = Form("default")
 ):
     try:
         content = await file.read()
-        
+
         session_id = BatchUploadManager.upload_single_image(
-            image_data=content,
-            filename=file.filename,
-            class_name=class_name
+            image_data=content, filename=file.filename, class_name=class_name
         )
-        
+
         return {
-                "success": True,
-                "message": "Image uploaded successfully",
-                "session_id": session_id,
-                "filename": file.filename,
-                "class": class_name
-            }
-        
-    except Exception as e:
-        return {
-           "detail": f"Error uploading image: {str(e)}"
+            "success": True,
+            "message": "Image uploaded successfully",
+            "session_id": session_id,
+            "filename": file.filename,
+            "class": class_name,
         }
-           
+
+    except Exception as e:
+        return {"detail": f"Error uploading image: {str(e)}"}
+
+
 @app.post("/rgb/classify-image/{session_id}")
-async def rgb_classify(
-    session_id: str
-): 
+async def rgb_classify(session_id: str, classify_parameters: RgbClassify):
     try:
         metadata = BatchUploadManager.get_metadata(session_id)
     except ValueError:
@@ -325,8 +321,28 @@ async def rgb_classify(
 
     if metadata["total_files"] == 0:
         return {"error": "No files found in this upload session"}
-    
+
     BatchUploadManager.update_metadata(session_id, {"status": "processing"})
 
-    # returns the desired image
-    return metadata["classes"]["default"]["files"][0]["saved_path"]
+    class_name = (
+        classify_parameters.class_name if classify_parameters.class_name else "default"
+    )
+
+    # Classify the image
+    try:
+        result = classify_feature_based_image(
+            image_path=metadata["classes"][class_name]["files"][0]["saved_path"],
+            model_name=classify_parameters.model_name,
+            properties=classify_parameters.rgb_ranges,
+            class_name="bart",
+        )
+
+        return {
+            "status": "success",
+            "message": "Image classified successfully",
+            "result": result,
+        }
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Classification error: {str(e)}\n{error_details}")
+        return {"error": f"Classification failed: {str(e)}"}
