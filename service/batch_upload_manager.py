@@ -120,6 +120,7 @@ class BatchUploadManager:
                             "created_at": metadata.get("created_at"),
                             "status": metadata.get("status"),
                             "total_files": metadata.get("total_files"),
+                            "training_results": metadata.get("training_results"),
                             "classes": list(metadata.get("classes", {}).keys()),
                         }
                     )

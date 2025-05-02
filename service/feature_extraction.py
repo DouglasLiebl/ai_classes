@@ -118,6 +118,12 @@ def train_neural_network_from_csv(
     metadata_path = os.path.join(models_dir, f"{model_name}_metadata.json")
     with open(metadata_path, "w") as f:
         json.dump(metadata, f)
+    
+    return {
+        "model_name": model_name,
+        "accuracy": float(str(acc)),
+        "accuracy_str": str(acc)
+    }
 
 
 def is_pixel_in_interval(pixel, interval):

@@ -56,16 +56,6 @@ def background_model_training(
             },
         )
 
-        try:
-            model_folder = os.path.join("base", params.model_name)
-            if os.path.exists(model_folder):
-                shutil.rmtree(model_folder)
-                print(f"Deleted model folder: {model_folder}")
-            else:
-                print(f"Model folder not found: {model_folder}")
-        except Exception as e:
-            print(f"Error deleting folder: {str(e)}")
-
     except Exception as e:
         error_details = traceback.format_exc()
         print(f"Background training error: {str(e)}\n{error_details}")

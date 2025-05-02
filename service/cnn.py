@@ -115,6 +115,12 @@ def train_and_evaluate_cnn(
     metadata_path = os.path.join(models_dir, f"{model_name}_metadata.json")
     with open(metadata_path, "w") as f:
         json.dump(metadata, f)
+    
+    return {
+        "model_name": model_name,
+        "accuracy": float(str(acc)),
+        "accuracy_str": str(acc),
+    }
 
 
 def classify_new_image(model_name, image_path):
