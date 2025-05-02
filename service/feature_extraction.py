@@ -22,6 +22,7 @@ def train_neural_network_from_csv(
     model_name: str = "model",
     layers: int = 4,
     neurons_by_layer: int = 4,
+    total_rgb_ranges: int = 0
 ):
     dataset = pd.read_csv(csv_file)
 
@@ -112,7 +113,8 @@ def train_neural_network_from_csv(
         "epochs": epochs,
         "training_samples": len(y_train),
         "test_samples": len(y_test),
-        "unique_classes": unique_classes
+        "unique_classes": unique_classes,
+        "total_rgb_ranges": total_rgb_ranges
     }
     
     metadata_path = os.path.join(models_dir, f"{model_name}_metadata.json")

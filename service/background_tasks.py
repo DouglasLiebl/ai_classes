@@ -18,6 +18,10 @@ def background_model_training(
             session_id, {"status": "training_in_progress"}
         )
 
+        total_rgb_ranges = 0
+        for training_class in params.rgb_ranges:
+            total_rgb_ranges += len(training_class.rgb_ranges)
+
         parent_folder = f"base/{params.model_name}"
         training_folder = os.path.join(parent_folder, "training_set")
 
@@ -37,6 +41,7 @@ def background_model_training(
                 model_name=params.model_name,
                 layers=params.layers,
                 neurons_by_layer=params.neurons_by_layer,
+                total_rgb_ranges=total_rgb_ranges
             )
         else:
             training_results = train_and_evaluate_cnn(
@@ -46,10 +51,6 @@ def background_model_training(
                 layers=params.layers,
                 neurons_by_layer=params.neurons_by_layer,
             )
-
-        total_rgb_ranges = 0
-        for training_class in params.rgb_ranges:
-            total_rgb_ranges += len(training_class.rgb_ranges)
 
         BatchUploadManager.update_metadata(
             session_id,
