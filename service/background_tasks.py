@@ -47,10 +47,15 @@ def background_model_training(
                 neurons_by_layer=params.neurons_by_layer,
             )
 
+        total_rgb_ranges = 0
+        for training_class in params.rgb_ranges:
+            total_rgb_ranges += len(training_class.rgb_ranges)
+
         BatchUploadManager.update_metadata(
             session_id,
             {
                 "status": "completed",
+                "total_rgb_ranges": total_rgb_ranges,
                 "training_results": training_results,
                 "completed_at": datetime.now().isoformat(),
             },
