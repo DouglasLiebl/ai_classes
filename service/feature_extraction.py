@@ -300,6 +300,7 @@ def list_rgb_models() -> List[Dict]:
                 "accuracy": metadata.get("accuracy"),
                 "accuracy_str": metadata.get("accuracy_str", str(metadata.get("accuracy"))) if metadata.get("accuracy") is not None else None,
                 "training_samples": metadata.get("training_samples"),
+                "total_rgb_ranges": metadata.get("total_rgb_ranges"),
                 "test_samples": metadata.get("test_samples"),
             }
         )
