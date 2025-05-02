@@ -131,6 +131,8 @@ async def train_from_session(
         if metadata["classes"] == "training_in_progress":
             return {"error": "This model already is training"}
 
+        params.model_name = params.model_name.replace(" ", "_")
+        
         BatchUploadManager.update_metadata(session_id, {"status": "preparing"})
 
         parent_folder = f"base/{params.model_name}"
@@ -199,8 +201,6 @@ async def train_from_session(
             return {
                 "error": "No valid files were uploaded or split between training and test sets"
             }
-
-        params.model_name = params.model_name.replace(" ", "_")
 
         background_tasks.add_task(
             background_model_training, session_id=session_id, params=params
