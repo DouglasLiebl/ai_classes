@@ -90,7 +90,6 @@ def train_and_evaluate_cnn(
     models_dir = os.path.join("models", "cnn")
     os.makedirs(models_dir, exist_ok=True)
 
-
     model_path = os.path.join(models_dir, f"{model_name}.keras")
     neural_network.save(model_path)
 

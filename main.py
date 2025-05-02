@@ -200,6 +200,8 @@ async def train_from_session(
                 "error": "No valid files were uploaded or split between training and test sets"
             }
 
+        params.model_name = params.model_name.replace(" ", "_")
+
         background_tasks.add_task(
             background_model_training, session_id=session_id, params=params
         )
