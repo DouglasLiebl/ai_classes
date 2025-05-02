@@ -1,6 +1,5 @@
 import os
 from datetime import datetime
-from fastapi import Request
 import tensorflow as tf
 from tensorflow import keras
 from keras.models import Sequential
@@ -102,17 +101,26 @@ def train_and_evaluate_cnn(
     with open(class_mapping_path, "w") as f:
         json.dump(class_mapping, f)
 
-    return {
-        "model_name": model_name,
+    metadata = {
         "accuracy": float(str(acc)),
         "accuracy_str": str(acc),
-        "class_indices": test_base.class_indices,
+        "class_indices": class_indices,
+        "created_date": datetime.now().isoformat(),
+        "layers": layers,
+        "neurons_by_layer": neurons_by_layer,
+        "epochs": epochs,
+        "training_samples": len(training_base.classes),
+        "test_samples": len(test_base.classes)
     }
+    
+    metadata_path = os.path.join(models_dir, f"{model_name}_metadata.json")
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f)
 
 
 def classify_new_image(model_name, image_path):
     try:
-        models_dir = os.path.join("models")
+        models_dir = os.path.join("models", "cnn")
         model_path = os.path.join(models_dir, f"{model_name}.keras")
 
         if not os.path.exists(model_path):
@@ -153,8 +161,8 @@ def classify_new_image(model_name, image_path):
         raise
 
 
-def list_trained_models() -> List[Dict]:
-    models_dir = os.path.join("models")
+def list_cnn_models() -> List[Dict]:
+    models_dir = os.path.join("models", "cnn")
     if not os.path.exists(models_dir):
         os.makedirs(models_dir, exist_ok=True)
         return []
@@ -177,14 +185,34 @@ def list_trained_models() -> List[Dict]:
                     classes = json.load(f)
             except:
                 pass
+        
+        metadata = {
+            "accuracy": None,
+            "created_date": created_date.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        
+        metadata_path = os.path.join(models_dir, f"{model_name}_metadata.json")
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r") as f:
+                    stored_metadata = json.load(f)
+                    metadata.update(stored_metadata)
+                    if "created_date" in stored_metadata and isinstance(stored_metadata["created_date"], str):
+                        metadata["created_date"] = stored_metadata["created_date"].split("T")[0] + " " + stored_metadata["created_date"].split("T")[1].split(".")[0]
+            except Exception as e:
+                print(f"Error loading metadata for {model_name}: {str(e)}")
 
         models_info.append(
             {
                 "model_name": model_name,
                 "model_size_mb": round(file_size / (1024 * 1024), 2),
-                "created_date": created_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_date": metadata.get("created_date", created_date.strftime("%Y-%m-%d %H:%M:%S")),
                 "num_classes": len(classes),
                 "classes": list(classes.values()),
+                "accuracy": metadata.get("accuracy"),
+                "accuracy_str": metadata.get("accuracy_str", str(metadata.get("accuracy"))) if metadata.get("accuracy") is not None else None,
+                "training_samples": metadata.get("training_samples"),
+                "test_samples": metadata.get("test_samples"),
             }
         )
 

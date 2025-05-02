@@ -1,0 +1,1 @@
+{"accuracy": 1.0, "accuracy_str": "1.0", "class_indices": {"marge": 0}, "created_date": "2025-05-01T23:24:05.737629", "layers": 30, "neurons_by_layer": 20, "epochs": 10, "training_samples": 11, "test_samples": 3}

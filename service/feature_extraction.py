@@ -2,7 +2,6 @@ import tensorflow as tf
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import matplotlib.pyplot as plt
 import os
 import csv
 from PIL import Image
@@ -10,11 +9,12 @@ from argparse import ArgumentParser
 import json
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from keras.models import load_model
-
+from datetime import datetime
+from typing import List, Dict
+import glob
 
 def train_neural_network_from_csv(
     csv_file: str,
@@ -23,19 +23,6 @@ def train_neural_network_from_csv(
     layers: int = 4,
     neurons_by_layer: int = 4,
 ):
-    """
-    Trains a customizable neural network using the dataset provided in the CSV file.
-
-    Args:
-        csv_path (str): Path to the CSV file.
-        epochs (int): Number of training epochs. Default is 1000.
-        layers (int): Number of hidden layers. Default is 3.
-        neurons_per_layer (int): Number of neurons per hidden layer. Default is 4.
-
-    Returns:
-        tf.keras.Model: The trained neural network model.
-    """
-
     dataset = pd.read_csv(csv_file)
 
     sns.countplot(x="class", data=dataset)
@@ -97,8 +84,13 @@ def train_neural_network_from_csv(
     )
 
     predictions = model.predict(X_test)
-    predictions = predictions > 0.5
-    acc = accuracy_score(y_test, predictions)
+    
+    if unique_classes == 2:
+        predictions_classes = (predictions > 0.5).astype(int).flatten()
+    else:
+        predictions_classes = np.argmax(predictions, axis=1)
+
+    acc = accuracy_score(y_test, predictions_classes)
 
     models_dir = os.path.join("models", "rgb")
     model_path = os.path.join(models_dir, f"{model_name}.keras")
@@ -107,14 +99,25 @@ def train_neural_network_from_csv(
 
     class_mapping = {index: label for index, label in enumerate(label_encoder.classes_)}
     class_mapping_path = os.path.join(models_dir, f"{model_name}_classes.json")
+
     with open(class_mapping_path, "w") as f:
         json.dump(class_mapping, f)
 
-    return {
-        "model_name": model_name,
+    metadata = {
         "accuracy": float(str(acc)),
         "accuracy_str": str(acc),
+        "created_date": datetime.now().isoformat(),
+        "layers": layers,
+        "neurons_by_layer": neurons_by_layer,
+        "epochs": epochs,
+        "training_samples": len(y_train),
+        "test_samples": len(y_test),
+        "unique_classes": unique_classes
     }
+    
+    metadata_path = os.path.join(models_dir, f"{model_name}_metadata.json")
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f)
 
 
 def is_pixel_in_interval(pixel, interval):
@@ -187,7 +190,7 @@ def extract_features(main_folder, output_csv, classes):
 
 
 def classify_feature_based_image(image_path, model_name, properties, class_name):
-    model_path = os.path.join("models", f"{model_name}.keras")
+    model_path = os.path.join("models", "rgb", f"{model_name}.keras")
     model = load_model(model_path)
 
     image = Image.open(image_path).convert("RGB")
@@ -223,9 +226,9 @@ def classify_feature_based_image(image_path, model_name, properties, class_name)
     predicted_class = np.argmax(prediction[0])
     confidence = float(prediction[0][predicted_class])
 
-    # Lê o mapeamento de classes
-    class_mapping_path = os.path.join("models", f"{model_name}_classes.json")
+    class_mapping_path = os.path.join("models", "rgb", f"{model_name}_classes.json")
     class_name = str(predicted_class)
+
     if os.path.exists(class_mapping_path):
         with open(class_mapping_path, "r") as f:
             class_mapping = json.load(f)
@@ -237,6 +240,65 @@ def classify_feature_based_image(image_path, model_name, properties, class_name)
         "confidence": float(confidence),
         "all_probabilities": [float(p) for p in prediction[0]],
     }
+
+def list_rgb_models() -> List[Dict]:
+    models_dir = os.path.join("models", "rgb")
+    if not os.path.exists(models_dir):
+        os.makedirs(models_dir, exist_ok=True)
+        return []
+
+    model_paths = glob.glob(os.path.join(models_dir, "*.keras"))
+    models_info = []
+
+    for model_path in model_paths:
+        model_name = os.path.basename(model_path).replace(".keras", "")
+
+        stats = os.stat(model_path)
+        created_date = datetime.fromtimestamp(stats.st_ctime)
+        file_size = stats.st_size
+
+        class_mapping_path = os.path.join(models_dir, f"{model_name}_classes.json")
+        classes = {}
+        if os.path.exists(class_mapping_path):
+            try:
+                with open(class_mapping_path, "r") as f:
+                    classes = json.load(f)
+            except:
+                pass
+        
+        metadata = {
+            "accuracy": None,
+            "created_date": created_date.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        
+        metadata_path = os.path.join(models_dir, f"{model_name}_metadata.json")
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r") as f:
+                    stored_metadata = json.load(f)
+                    metadata.update(stored_metadata)
+                    if "created_date" in stored_metadata and isinstance(stored_metadata["created_date"], str):
+                        metadata["created_date"] = stored_metadata["created_date"].split("T")[0] + " " + stored_metadata["created_date"].split("T")[1].split(".")[0]
+            except Exception as e:
+                print(f"Error loading metadata for {model_name}: {str(e)}")
+
+        models_info.append(
+            {
+                "model_name": model_name,
+                "model_size_mb": round(file_size / (1024 * 1024), 2),
+                "created_date": metadata.get("created_date", created_date.strftime("%Y-%m-%d %H:%M:%S")),
+                "num_classes": len(classes),
+                "classes": list(classes.values()),
+                "accuracy": metadata.get("accuracy"),
+                "accuracy_str": metadata.get("accuracy_str", str(metadata.get("accuracy"))) if metadata.get("accuracy") is not None else None,
+                "training_samples": metadata.get("training_samples"),
+                "test_samples": metadata.get("test_samples"),
+            }
+        )
+
+    models_info.sort(key=lambda x: x["created_date"], reverse=True)
+
+    return models_info
 
 
 if __name__ == "__main__":

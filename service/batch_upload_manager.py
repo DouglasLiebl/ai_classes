@@ -194,3 +194,20 @@ class BatchUploadManager:
         })
         
         return session_id
+    
+    @staticmethod
+    def delete_session(session_id: str) -> bool:
+        try:
+            session_dir = BatchUploadManager.get_session_path(session_id)
+            
+            if not os.path.exists(session_dir):
+                print(f"Session directory {session_id} not found")
+                return False
+                
+            shutil.rmtree(session_dir)
+            print(f"Session {session_id} deleted successfully")
+            return True
+            
+        except Exception as e:
+            print(f"Error deleting session {session_id}: {str(e)}")
+            return False

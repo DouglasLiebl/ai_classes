@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import shutil
 from entities.rgbClassify import RgbClassify
-from service.cnn import classify_new_image, list_trained_models
+from service.cnn import classify_new_image, list_cnn_models
 from service.batch_upload_manager import BatchUploadManager
 import tempfile
 import traceback
@@ -12,8 +12,7 @@ import random
 from entities.trainingParameters import TrainingParameters
 from service.background_tasks import background_model_training
 from fastapi.middleware.cors import CORSMiddleware
-
-from service.feature_extraction import classify_feature_based_image
+from service.feature_extraction import classify_feature_based_image, list_rgb_models
 
 app = FastAPI()
 
@@ -24,7 +23,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.post("/create-upload-session")
 async def create_upload_session():
@@ -80,8 +78,29 @@ async def upload_batch(
         print(f"Batch upload error: {str(e)}\n{error_details}")
         return {"error": f"Batch upload failed: {str(e)}"}
 
+@app.post("/upload-single")
+async def upload_single_image(
+    file: UploadFile = File(...), class_name: str = Form("default")
+):
+    try:
+        content = await file.read()
 
-@app.get("/upload-sessions")
+        session_id = BatchUploadManager.upload_single_image(
+            image_data=content, filename=file.filename, class_name=class_name
+        )
+
+        return {
+            "success": True,
+            "message": "Image uploaded successfully",
+            "session_id": session_id,
+            "filename": file.filename,
+            "class": class_name,
+        }
+
+    except Exception as e:
+        return {"detail": f"Error uploading image: {str(e)}"}
+
+@app.get("/list-upload-sessions")
 async def list_upload_sessions():
     try:
         sessions = BatchUploadManager.list_sessions()
@@ -255,7 +274,7 @@ async def get_training_status(session_id: str):
 
 
 @app.post("/cnn/classify-image/")
-async def classify_image(image: UploadFile = File(...), model_name: str = Form(...)):
+async def cnn_classify_image(image: UploadFile = File(...), model_name: str = Form(...)):
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_image:
             contents = await image.read()
@@ -277,43 +296,8 @@ async def classify_image(image: UploadFile = File(...), model_name: str = Form(.
         print(f"Classification error: {str(e)}\n{error_details}")
         return {"error": f"Classification failed: {str(e)}"}
 
-
-@app.get("/list-models/")
-async def list_models():
-    try:
-        models = list_trained_models()
-        return {"models_count": len(models), "models": models}
-    except Exception as e:
-        error_details = traceback.format_exc()
-        print(f"Error listing models: {str(e)}\n{error_details}")
-        return {"error": f"Failed to list models: {str(e)}"}
-
-
-@app.post("/upload/single")
-async def upload_single_image(
-    file: UploadFile = File(...), class_name: str = Form("default")
-):
-    try:
-        content = await file.read()
-
-        session_id = BatchUploadManager.upload_single_image(
-            image_data=content, filename=file.filename, class_name=class_name
-        )
-
-        return {
-            "success": True,
-            "message": "Image uploaded successfully",
-            "session_id": session_id,
-            "filename": file.filename,
-            "class": class_name,
-        }
-
-    except Exception as e:
-        return {"detail": f"Error uploading image: {str(e)}"}
-
-
 @app.post("/rgb/classify-image/{session_id}")
-async def rgb_classify(session_id: str, classify_parameters: RgbClassify):
+async def rgb_classify_image(session_id: str, classify_parameters: RgbClassify):
     try:
         metadata = BatchUploadManager.get_metadata(session_id)
     except ValueError:
@@ -328,13 +312,12 @@ async def rgb_classify(session_id: str, classify_parameters: RgbClassify):
         classify_parameters.class_name if classify_parameters.class_name else "default"
     )
 
-    # Classify the image
     try:
         result = classify_feature_based_image(
             image_path=metadata["classes"][class_name]["files"][0]["saved_path"],
             model_name=classify_parameters.model_name,
             properties=classify_parameters.rgb_ranges,
-            class_name="bart",
+            class_name="default",
         )
 
         return {
@@ -346,3 +329,70 @@ async def rgb_classify(session_id: str, classify_parameters: RgbClassify):
         error_details = traceback.format_exc()
         print(f"Classification error: {str(e)}\n{error_details}")
         return {"error": f"Classification failed: {str(e)}"}
+
+@app.get("/cnn/list-models/")
+async def list_models_cnn():
+    try:
+        models = list_cnn_models()
+        return {"models_count": len(models), "models": models}
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Error listing models: {str(e)}\n{error_details}")
+        return {"error": f"Failed to list models: {str(e)}"}
+
+@app.get("/rgb/list-models/")
+async def list_models_rgb():
+    try:
+        models = list_rgb_models()
+        return {"models_count": len(models), "models": models}
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Error listing models: {str(e)}\n{error_details}")
+        return {"error": f"Failed to list models: {str(e)}"}
+
+@app.delete("/clean-session/{session_id}")
+async def clean_session(session_id: str, preserve_metadata: bool = True):
+    try:
+        try:
+            BatchUploadManager.get_metadata(session_id)
+        except ValueError:
+            return {"error": f"Session {session_id} not found"}
+        
+        success = BatchUploadManager.clean_session(session_id, preserve_metadata)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Session {session_id} cleaned successfully",
+                "preserve_metadata": preserve_metadata
+            }
+        else:
+            return {"error": f"Failed to clean session {session_id}"}
+            
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Error cleaning session: {str(e)}\n{error_details}")
+        return {"error": f"Failed to clean session: {str(e)}"}
+
+@app.delete("/delete-session/{session_id}")
+async def delete_session(session_id: str):
+    try:
+        try:
+            BatchUploadManager.get_metadata(session_id)
+        except ValueError:
+            return {"error": f"Session {session_id} not found"}
+            
+        success = BatchUploadManager.delete_session(session_id)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Session {session_id} deleted successfully"
+            }
+        else:
+            return {"error": f"Failed to delete session {session_id}"}
+            
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Error deleting session: {str(e)}\n{error_details}")
+        return {"error": f"Failed to delete session: {str(e)}"}

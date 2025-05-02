@@ -13,9 +13,6 @@ def background_model_training(
     session_id: str,
     params: TrainingParameters,
 ):
-    """
-    Background task for model training
-    """
     try:
         BatchUploadManager.update_metadata(
             session_id, {"status": "training_in_progress"}
@@ -60,8 +57,12 @@ def background_model_training(
         )
 
         try:
-            # shutil.rmtree(parent_folder)
-            pass
+            model_folder = os.path.join("base", params.model_name)
+            if os.path.exists(model_folder):
+                shutil.rmtree(model_folder)
+                print(f"Deleted model folder: {model_folder}")
+            else:
+                print(f"Model folder not found: {model_folder}")
         except Exception as e:
             print(f"Error deleting folder: {str(e)}")
 
